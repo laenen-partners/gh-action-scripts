@@ -1,0 +1,19 @@
+name: Test Go Defaults
+
+on:
+  push:
+    paths-ignore:
+      - "**/*.md"
+  pull_request:
+    paths-ignore:
+      - "**/*.md"
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yaml
+
+  release:
+    needs: ci
+    permissions:
+      contents: write
+    uses: ./.github/workflows/release.yaml

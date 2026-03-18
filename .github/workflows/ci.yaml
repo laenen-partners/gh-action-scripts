@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  workflow_call:
+    inputs:
+      upload-artifacts:
+        type: boolean
+        default: false
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: check if Taskfile exists
+        run: |
+          if [ ! -f "Taskfile.yml" ] && [ ! -f "Taskfile.yaml" ]; then
+            echo "Taskfile.yml or Taskfile.yaml not found. Please create one in the root of the repository."
+            exit 1
+          fi
+
+      - name: check if mise.toml exists
+        run: |
+          if [ ! -f "mise.toml" ]; then
+            echo "mise.toml not found. Please create one in the root of the repository."
+            exit 1
+          fi
+
+      - uses: jdx/mise-action@v3
+        with:
+          install: true
+          cache: true
+
+      - name: setup deps
+        run: task setup
+
+      - name: run codegen
+        run: task generate
+
+      - name: run formatting
+        run: task format
+
+      - name: check for changes
+        run: |
+          if [[ -n $(git status --porcelain) ]]; then
+            echo "There are changes in the generated code. Please commit and push them."
+            git status --porcelain
+            exit 1
+          else
+            echo "No changes in the generated code."
+          fi
+
+      - name: run lint
+        run: task lint
+
+      - name: run build
+        run: task build
+
+      - name: run tests
+        run: task test:ci
+
+      - name: upload test results
+        if: ${{ (success() || failure()) && inputs.upload-artifacts }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: reports/junit.xml
+
+      - name: run vulnerability scan
+        run: task vuln:ci
