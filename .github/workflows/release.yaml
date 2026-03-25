@@ -45,7 +45,40 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: create and push tags
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Sync cross-module versions
+        run: |
+          SEMVER="${{ needs.versioning.outputs.semver }}"
+          ROOT_MODULE=$(go mod edit -json | jq -r '.Module.Path')
+
+          # For each submodule, update any require that references a sibling module
+          find . -mindepth 2 -name 'go.mod' -not -path '*/vendor/*' | while read -r modfile; do
+            dir=$(dirname "$modfile")
+            # Find requires sharing the root module path (siblings in this repo)
+            deps=$(cd "$dir" && go mod edit -json | jq -r --arg root "$ROOT_MODULE" \
+              '.Require[]? | select(.Path == $root or (.Path | startswith($root + "/"))) | .Path')
+            for dep in $deps; do
+              echo "Updating $modfile: $dep@$SEMVER"
+              (cd "$dir" && go mod edit -require "${dep}@${SEMVER}")
+            done
+          done
+
+      - name: Commit version sync
+        run: |
+          if git diff --quiet; then
+            echo "No cross-module version changes needed"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add -A '*/go.mod'
+            git commit -m "chore: sync cross-module versions to ${{ needs.versioning.outputs.semver }}"
+          fi
+
+      - name: Create and push tags
         run: |
           SEMVER="${{ needs.versioning.outputs.semver }}"
 
@@ -53,16 +86,14 @@ jobs:
           git tag "$SEMVER"
 
           # Submodule tags for Go multi-module repos
-          TAGS="$SEMVER"
           find . -mindepth 2 -name 'go.mod' -not -path '*/vendor/*' | while read -r modfile; do
             dir=$(dirname "$modfile" | sed 's|^\./||')
             tag="${dir}/${SEMVER}"
             echo "Tagging submodule: $tag"
             git tag "$tag"
-            TAGS="$TAGS $tag"
           done
 
-          git push origin --tags
+          git push origin HEAD --tags
 
       - name: create github release
         env:
