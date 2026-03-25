@@ -45,10 +45,24 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: create and push tag
+      - name: create and push tags
         run: |
-          git tag "${{ needs.versioning.outputs.semver }}"
-          git push origin "${{ needs.versioning.outputs.semver }}"
+          SEMVER="${{ needs.versioning.outputs.semver }}"
+
+          # Root tag
+          git tag "$SEMVER"
+
+          # Submodule tags for Go multi-module repos
+          TAGS="$SEMVER"
+          find . -mindepth 2 -name 'go.mod' -not -path '*/vendor/*' | while read -r modfile; do
+            dir=$(dirname "$modfile" | sed 's|^\./||')
+            tag="${dir}/${SEMVER}"
+            echo "Tagging submodule: $tag"
+            git tag "$tag"
+            TAGS="$TAGS $tag"
+          done
+
+          git push origin --tags
 
       - name: create github release
         env:
