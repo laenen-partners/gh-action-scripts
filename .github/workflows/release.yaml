@@ -9,6 +9,13 @@ on:
       go-mod-private-owner:
         type: string
         default: ""
+    outputs:
+      released:
+        description: "true if a new release was created"
+        value: ${{ jobs.versioning.outputs.release }}
+      semver:
+        description: "Semver tag created (e.g. v1.2.3). Empty when released == false"
+        value: ${{ jobs.versioning.outputs.semver }}
     secrets:
       GO_MOD_APP_ID:
         required: false
